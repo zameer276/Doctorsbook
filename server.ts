@@ -29,6 +29,61 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
+  app.use(express.json());
+
+  app.post('/api/admin/create-doctor', async (req, res) => {
+    const { email, password, name, specialization, availability } = req.body;
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+
+    try {
+      // Verify the requester is an admin
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const requesterEmail = decodedToken.email;
+
+      if (requesterEmail !== 'ratherzameer30@gmail.com') {
+        return res.status(403).json({ error: 'Forbidden: Admin access only' });
+      }
+
+      // Create the user in Firebase Auth
+      const userRecord = await admin.auth().createUser({
+        email,
+        password,
+        displayName: name,
+      });
+
+      // Create the user profile in Firestore
+      await db.collection('users').doc(userRecord.uid).set({
+        uid: userRecord.uid,
+        name,
+        email,
+        role: 'doctor',
+        createdAt: new Date().toISOString(),
+      });
+
+      // Create the doctor details in Firestore
+      await db.collection('doctors').doc(userRecord.uid).set({
+        uid: userRecord.uid,
+        name,
+        email,
+        specialization,
+        availability,
+        createdBy: decodedToken.uid,
+        createdAt: new Date().toISOString(),
+      });
+
+      res.json({ success: true, uid: userRecord.uid });
+    } catch (error: any) {
+      console.error('Error creating doctor:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Reminder Cron Job - Runs every hour
   cron.schedule('0 * * * *', async () => {
     console.log('Running reminder check...');

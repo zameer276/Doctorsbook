@@ -54,10 +54,13 @@ export default function AdminDashboard() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    password: '',
     specialization: '',
     days: [] as string[],
     timeSlots: [] as string[],
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     const doctorsQuery = query(collection(db, 'doctors'));
@@ -80,42 +83,64 @@ export default function AdminDashboard() {
 
   const handleAddDoctor = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const doctorId = editingDoctor ? editingDoctor.uid : Math.random().toString(36).substring(7);
-      const doctorData = {
-        uid: doctorId,
-        name: formData.name,
-        email: formData.email,
-        specialization: formData.specialization,
-        availability: {
-          days: formData.days,
-          timeSlots: formData.timeSlots,
-        },
-        createdBy: auth.currentUser?.uid,
-        createdAt: new Date().toISOString(),
-      };
+    setFormError('');
+    setIsSubmitting(true);
 
+    try {
       if (editingDoctor) {
-        await updateDoc(doc(db, 'doctors', doctorId), doctorData);
-        // Also update the user role if needed (though admin usually creates doctor accounts manually)
-      } else {
-        await setDoc(doc(db, 'doctors', doctorId), doctorData);
-        // In a real app, you'd also create a Firebase Auth user for the doctor
-        // For this demo, we'll assume the doctor profile is enough or created via a cloud function
-        await setDoc(doc(db, 'users', doctorId), {
-          uid: doctorId,
+        // Update existing doctor in Firestore
+        const doctorRef = doc(db, 'doctors', editingDoctor.uid);
+        await updateDoc(doctorRef, {
           name: formData.name,
           email: formData.email,
-          role: 'doctor',
-          createdAt: new Date().toISOString(),
+          specialization: formData.specialization,
+          availability: {
+            days: formData.days,
+            timeSlots: formData.timeSlots,
+          },
         });
+
+        // Also update user profile
+        const userRef = doc(db, 'users', editingDoctor.uid);
+        await updateDoc(userRef, {
+          name: formData.name,
+          email: formData.email,
+        });
+      } else {
+        // Create new doctor via API
+        const idToken = await auth.currentUser?.getIdToken();
+        const response = await fetch('/api/admin/create-doctor', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            name: formData.name,
+            specialization: formData.specialization,
+            availability: {
+              days: formData.days,
+              timeSlots: formData.timeSlots,
+            },
+          }),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to create doctor account');
+        }
       }
 
       setIsModalOpen(false);
       setEditingDoctor(null);
-      setFormData({ name: '', email: '', specialization: '', days: [], timeSlots: [] });
-    } catch (error) {
+      setFormData({ name: '', email: '', password: '', specialization: '', days: [], timeSlots: [] });
+    } catch (error: any) {
       console.error("Error adding/updating doctor:", error);
+      setFormError(error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -135,6 +160,7 @@ export default function AdminDashboard() {
     setFormData({
       name: doctor.name,
       email: doctor.email,
+      password: '', // Password not needed for edit
       specialization: doctor.specialization,
       days: doctor.availability.days,
       timeSlots: doctor.availability.timeSlots,
@@ -167,7 +193,7 @@ export default function AdminDashboard() {
         <button
           onClick={() => {
             setEditingDoctor(null);
-            setFormData({ name: '', email: '', specialization: '', days: [], timeSlots: [] });
+            setFormData({ name: '', email: '', password: '', specialization: '', days: [], timeSlots: [] });
             setIsModalOpen(true);
           }}
           className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
@@ -329,6 +355,12 @@ export default function AdminDashboard() {
               </button>
             </div>
             <form onSubmit={handleAddDoctor} className="p-6 space-y-4">
+              {formError && (
+                <div className="bg-rose-50 border border-rose-100 text-rose-600 px-4 py-3 rounded-xl flex items-center gap-3 text-sm">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <p>{formError}</p>
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Full Name</label>
@@ -353,6 +385,22 @@ export default function AdminDashboard() {
                   />
                 </div>
               </div>
+              
+              {!editingDoctor && (
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Initial Password</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                    placeholder="••••••••"
+                  />
+                  <p className="text-[10px] text-slate-400">Doctor will use this to login for the first time.</p>
+                </div>
+              )}
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Specialization</label>
                 <input
@@ -424,9 +472,14 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  {editingDoctor ? 'Save Changes' : 'Add Doctor'}
+                  {isSubmitting ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    editingDoctor ? 'Save Changes' : 'Add Doctor'
+                  )}
                 </button>
               </div>
             </form>

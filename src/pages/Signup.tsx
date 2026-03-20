@@ -25,7 +25,7 @@ export default function Signup() {
       // Check if profile exists, if not create one
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (!userDoc.exists()) {
-        const isAdmin = user.email === 'ratherzameer60@gmail.com';
+        const isAdmin = user.email === 'ratherzameer30@gmail.com';
         try {
           await setDoc(doc(db, 'users', user.uid), {
             uid: user.uid,
@@ -60,7 +60,7 @@ export default function Signup() {
       const user = userCredential.user;
 
       // Create user profile in Firestore
-      const isAdmin = email === 'ratherzameer60@gmail.com';
+      const isAdmin = email === 'ratherzameer30@gmail.com';
       try {
         await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,

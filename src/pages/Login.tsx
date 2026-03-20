@@ -24,7 +24,7 @@ export default function Login() {
       // Check if profile exists, if not create one
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (!userDoc.exists()) {
-        const isAdmin = user.email === 'ratherzameer60@gmail.com';
+        const isAdmin = user.email === 'ratherzameer30@gmail.com';
         await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
           name: user.displayName || 'New User',
