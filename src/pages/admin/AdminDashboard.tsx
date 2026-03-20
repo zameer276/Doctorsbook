@@ -43,8 +43,10 @@ interface Appointment {
 }
 
 export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState<'doctors' | 'appointments' | 'users'>('doctors');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
@@ -65,6 +67,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const doctorsQuery = query(collection(db, 'doctors'));
     const appointmentsQuery = query(collection(db, 'appointments'));
+    const usersQuery = query(collection(db, 'users'));
 
     const unsubDoctors = onSnapshot(doctorsQuery, (snapshot) => {
       setDoctors(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as Doctor)));
@@ -75,9 +78,14 @@ export default function AdminDashboard() {
       setLoading(false);
     });
 
+    const unsubUsers = onSnapshot(usersQuery, (snapshot) => {
+      setUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
+    });
+
     return () => {
       unsubDoctors();
       unsubAppointments();
+      unsubUsers();
     };
   }, []);
 
@@ -87,28 +95,34 @@ export default function AdminDashboard() {
     setIsSubmitting(true);
 
     try {
+      const idToken = await auth.currentUser?.getIdToken();
       if (editingDoctor) {
-        // Update existing doctor in Firestore
-        const doctorRef = doc(db, 'doctors', editingDoctor.uid);
-        await updateDoc(doctorRef, {
-          name: formData.name,
-          email: formData.email,
-          specialization: formData.specialization,
-          availability: {
-            days: formData.days,
-            timeSlots: formData.timeSlots,
+        // Update existing doctor via API
+        const response = await fetch('/api/admin/update-doctor', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
           },
+          body: JSON.stringify({
+            uid: editingDoctor.uid,
+            email: formData.email,
+            password: formData.password || undefined,
+            name: formData.name,
+            specialization: formData.specialization,
+            availability: {
+              days: formData.days,
+              timeSlots: formData.timeSlots,
+            },
+          }),
         });
 
-        // Also update user profile
-        const userRef = doc(db, 'users', editingDoctor.uid);
-        await updateDoc(userRef, {
-          name: formData.name,
-          email: formData.email,
-        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to update doctor account');
+        }
       } else {
         // Create new doctor via API
-        const idToken = await auth.currentUser?.getIdToken();
         const response = await fetch('/api/admin/create-doctor', {
           method: 'POST',
           headers: {
@@ -144,13 +158,26 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleDeleteDoctor = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this doctor?')) {
+  const handleDeleteUser = async (uid: string) => {
+    if (window.confirm('Are you sure you want to delete this account? This will permanently remove the user from Auth and Firestore.')) {
       try {
-        await deleteDoc(doc(db, 'doctors', id));
-        await deleteDoc(doc(db, 'users', id));
-      } catch (error) {
-        console.error("Error deleting doctor:", error);
+        const idToken = await auth.currentUser?.getIdToken();
+        const response = await fetch('/api/admin/delete-user', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({ uid }),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'Failed to delete user account');
+        }
+      } catch (error: any) {
+        console.error("Error deleting user:", error);
+        alert(error.message);
       }
     }
   };
@@ -218,128 +245,207 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      {/* Doctors Table */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h2 className="text-lg font-bold text-slate-900">Manage Doctors</h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search doctors..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-64"
-            />
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-                <th className="px-6 py-4 font-semibold">Doctor Name</th>
-                <th className="px-6 py-4 font-semibold">Specialization</th>
-                <th className="px-6 py-4 font-semibold">Availability</th>
-                <th className="px-6 py-4 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredDoctors.map((doctor) => (
-                <tr key={doctor.uid} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-xs">
-                        {doctor.name.charAt(0)}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900">{doctor.name}</p>
-                        <p className="text-xs text-slate-500">{doctor.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-medium">
-                      {doctor.specialization}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-xs text-slate-600">{doctor.availability.days.join(', ')}</p>
-                    <p className="text-[10px] text-slate-400">{doctor.availability.timeSlots.join(', ')}</p>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button 
-                        onClick={() => openEditModal(doctor)}
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteDoctor(doctor.uid)}
-                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredDoctors.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-slate-500">
-                    No doctors found matching your search.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* Tabs */}
+      <div className="flex border-b border-slate-100">
+        <button
+          onClick={() => setActiveTab('doctors')}
+          className={cn(
+            "px-6 py-3 text-sm font-semibold transition-all border-b-2",
+            activeTab === 'doctors' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Doctors
+        </button>
+        <button
+          onClick={() => setActiveTab('appointments')}
+          className={cn(
+            "px-6 py-3 text-sm font-semibold transition-all border-b-2",
+            activeTab === 'appointments' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
+          )}
+        >
+          Appointments
+        </button>
+        <button
+          onClick={() => setActiveTab('users')}
+          className={cn(
+            "px-6 py-3 text-sm font-semibold transition-all border-b-2",
+            activeTab === 'users' ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"
+          )}
+        >
+          All Users
+        </button>
       </div>
 
-      {/* Appointments Table */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-slate-100">
-          <h2 className="text-lg font-bold text-slate-900">All Appointments</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
-                <th className="px-6 py-4 font-semibold">Patient</th>
-                <th className="px-6 py-4 font-semibold">Doctor</th>
-                <th className="px-6 py-4 font-semibold">Date & Time</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {appointments.slice(0, 10).map((appointment) => (
-                <tr key={appointment.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <p className="font-semibold text-slate-900">{appointment.patientName}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-sm text-slate-600">{appointment.doctorName}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <p className="text-xs text-slate-600">{appointment.date}</p>
-                    <p className="text-[10px] text-slate-400">{appointment.time}</p>
-                  </td>
-                  <td className="px-6 py-4">
-                    <StatusBadge status={appointment.status as any} />
-                  </td>
+      {activeTab === 'doctors' && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <h2 className="text-lg font-bold text-slate-900">Manage Doctors</h2>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search doctors..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full md:w-64"
+              />
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                  <th className="px-6 py-4 font-semibold">Doctor Name</th>
+                  <th className="px-6 py-4 font-semibold">Specialization</th>
+                  <th className="px-6 py-4 font-semibold">Availability</th>
+                  <th className="px-6 py-4 font-semibold text-right">Actions</th>
                 </tr>
-              ))}
-              {appointments.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-slate-500">
-                    No appointments found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredDoctors.map((doctor) => (
+                  <tr key={doctor.uid} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-xs">
+                          {doctor.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{doctor.name}</p>
+                          <p className="text-xs text-slate-500">{doctor.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md text-xs font-medium">
+                        {doctor.specialization}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-xs text-slate-600">{doctor.availability.days.join(', ')}</p>
+                      <p className="text-[10px] text-slate-400">{doctor.availability.timeSlots.join(', ')}</p>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => openEditModal(doctor)}
+                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteUser(doctor.uid)}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
+      {activeTab === 'appointments' && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100">
+            <h2 className="text-lg font-bold text-slate-900">All Appointments</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                  <th className="px-6 py-4 font-semibold">Patient</th>
+                  <th className="px-6 py-4 font-semibold">Doctor</th>
+                  <th className="px-6 py-4 font-semibold">Date & Time</th>
+                  <th className="px-6 py-4 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {appointments.map((appointment) => (
+                  <tr key={appointment.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <p className="font-semibold text-slate-900">{appointment.patientName}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-sm text-slate-600">{appointment.doctorName}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-xs text-slate-600">{appointment.date}</p>
+                      <p className="text-[10px] text-slate-400">{appointment.time}</p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <StatusBadge status={appointment.status as any} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'users' && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100">
+            <h2 className="text-lg font-bold text-slate-900">User Accounts</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
+                  <th className="px-6 py-4 font-semibold">User</th>
+                  <th className="px-6 py-4 font-semibold">Role</th>
+                  <th className="px-6 py-4 font-semibold">Joined</th>
+                  <th className="px-6 py-4 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {users.map((user) => (
+                  <tr key={user.uid} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 font-bold text-xs">
+                          {user.name?.charAt(0) || '?'}
+                        </div>
+                        <div>
+                          <p className="font-semibold text-slate-900">{user.name}</p>
+                          <p className="text-xs text-slate-500">{user.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={cn(
+                        "px-2 py-1 rounded-md text-xs font-medium uppercase",
+                        user.role === 'admin' ? "bg-purple-100 text-purple-600" :
+                        user.role === 'doctor' ? "bg-indigo-100 text-indigo-600" :
+                        "bg-emerald-100 text-emerald-600"
+                      )}>
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <p className="text-xs text-slate-600">{user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}</p>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      {user.role !== 'admin' && (
+                        <button 
+                          onClick={() => handleDeleteUser(user.uid)}
+                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Add/Edit Modal */}
       {isModalOpen && (

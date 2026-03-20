@@ -84,6 +84,92 @@ async function startServer() {
     }
   });
 
+  app.post('/api/admin/update-doctor', async (req, res) => {
+    const { uid, email, password, name, specialization, availability } = req.body;
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+
+    try {
+      // Verify the requester is an admin
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const requesterEmail = decodedToken.email;
+
+      if (requesterEmail !== 'ratherzameer30@gmail.com') {
+        return res.status(403).json({ error: 'Forbidden: Admin access only' });
+      }
+
+      // Update Auth user
+      const updateData: any = {
+        displayName: name,
+        email: email,
+      };
+      if (password) {
+        updateData.password = password;
+      }
+      await admin.auth().updateUser(uid, updateData);
+
+      // Update Firestore user profile
+      await db.collection('users').doc(uid).update({
+        name,
+        email,
+      });
+
+      // Update Firestore doctor details
+      await db.collection('doctors').doc(uid).update({
+        name,
+        email,
+        specialization,
+        availability,
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error updating doctor:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/admin/delete-user', async (req, res) => {
+    const { uid } = req.body;
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+
+    try {
+      // Verify the requester is an admin
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const requesterEmail = decodedToken.email;
+
+      if (requesterEmail !== 'ratherzameer30@gmail.com') {
+        return res.status(403).json({ error: 'Forbidden: Admin access only' });
+      }
+
+      // Delete from Auth
+      await admin.auth().deleteUser(uid);
+
+      // Delete from Firestore
+      await db.collection('users').doc(uid).delete();
+      await db.collection('doctors').doc(uid).delete();
+      
+      // Optionally delete appointments related to this user
+      // (Simplified for now)
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Reminder Cron Job - Runs every hour
   cron.schedule('0 * * * *', async () => {
     console.log('Running reminder check...');
