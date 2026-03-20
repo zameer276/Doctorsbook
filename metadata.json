@@ -1,0 +1,5 @@
+{
+  "name": "DocBooker - Doctor Appointment Booking SaaS",
+  "description": "A full-stack Doctor Appointment Booking SaaS application with Admin, Doctor, and Patient dashboards, real-time updates, and role-based authentication.",
+  "requestFramePermissions": []
+}

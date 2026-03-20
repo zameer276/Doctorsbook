@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(path) ? get(path).data : null;
+    }
+
+    function hasRole(role) {
+      let data = getUserData();
+      return isAuthenticated() && data != null && data.role == role;
+    }
+
+    function isAdmin() {
+      return (request.auth.token.email == "ratherzameer60@gmail.com" && request.auth.token.email_verified == true) || hasRole('admin');
+    }
+
+    function isDoctor() {
+      return hasRole('doctor');
+    }
+
+    function isPatient() {
+      return hasRole('patient');
+    }
+
+    // ===============================================================
+    // Data Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string &&
+             data.role in ['admin', 'doctor', 'patient'];
+    }
+
+    function isValidDoctor(data) {
+      return data.keys().hasAll(['uid', 'name', 'specialization', 'availability', 'createdBy']) &&
+             data.uid is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.specialization is string && data.specialization.size() > 0 &&
+             data.availability is map &&
+             data.createdBy is string;
+    }
+
+    function isValidAppointment(data) {
+      return data.keys().hasAll(['patientId', 'doctorId', 'date', 'time', 'status']) &&
+             data.patientId is string &&
+             data.doctorId is string &&
+             data.date is string &&
+             data.time is string &&
+             data.status in ['pending', 'approved', 'rejected', 'completed'];
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'patient' || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin()) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /doctors/{doctorId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidDoctor(request.resource.data);
+      allow update: if isAdmin() && isValidDoctor(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.patientId ||
+        request.auth.uid == resource.data.doctorId
+      );
+      allow create: if isPatient() && isValidAppointment(request.resource.data) && request.resource.data.patientId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        (isPatient() && request.auth.uid == resource.data.patientId && request.resource.data.status == resource.data.status) ||
+        (isDoctor() && request.auth.uid == resource.data.doctorId && isValidAppointment(request.resource.data)) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+  }
+}
