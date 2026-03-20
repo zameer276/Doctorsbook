@@ -64,7 +64,11 @@ export default function Login() {
       }
     } catch (err: any) {
       console.error("Login error:", err);
-      setError(err.message || 'Failed to login. Please check your credentials.');
+      if (err.code === 'auth/operation-not-allowed') {
+        setError('Email/Password sign-in is not enabled. Please enable it in the Firebase Console or use Google Sign-In.');
+      } else {
+        setError(err.message || 'Failed to login. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
     }

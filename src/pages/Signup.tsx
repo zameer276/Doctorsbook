@@ -74,7 +74,11 @@ export default function Signup() {
       navigate('/patient');
     } catch (err: any) {
       console.error("Signup error:", err);
-      setError(err.message || 'Failed to create account. Please try again.');
+      if (err.code === 'auth/operation-not-allowed') {
+        setError('Email/Password sign-up is not enabled. Please enable it in the Firebase Console or use Google Sign-In.');
+      } else {
+        setError(err.message || 'Failed to create account. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
