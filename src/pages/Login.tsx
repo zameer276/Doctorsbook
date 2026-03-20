@@ -57,7 +57,8 @@ export default function Login() {
       // Fetch user profile to redirect to correct dashboard
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (userDoc.exists()) {
-        const role = userDoc.data().role;
+        const data = userDoc.data();
+        const role = user.email === 'ratherzameer30@gmail.com' ? 'admin' : data.role;
         const from = location.state?.from?.pathname || `/${role}`;
         navigate(from, { replace: true });
       } else {

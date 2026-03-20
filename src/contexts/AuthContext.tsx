@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestore';
 
@@ -20,6 +20,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const ADMIN_EMAIL = 'ratherzameer30@gmail.com';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -31,9 +33,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(user);
       if (user) {
         // Use onSnapshot for real-time profile updates
-        const profileUnsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnap) => {
+        const profileUnsubscribe = onSnapshot(doc(db, 'users', user.uid), async (docSnap) => {
           if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
+            const data = docSnap.data() as UserProfile;
+            
+            // Auto-upgrade to admin if email matches
+            if (user.email === ADMIN_EMAIL && data.role !== 'admin') {
+              try {
+                await updateDoc(doc(db, 'users', user.uid), { role: 'admin' });
+                // The snapshot will trigger again with the new role
+              } catch (error) {
+                console.error("Failed to upgrade user to admin:", error);
+              }
+            }
+            
+            setProfile(data);
           } else {
             setProfile(null);
           }
