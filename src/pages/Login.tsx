@@ -21,17 +21,18 @@ export default function Login() {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // Check if profile exists, if not create one as patient
+      // Check if profile exists, if not create one
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       if (!userDoc.exists()) {
+        const isAdmin = user.email === 'ratherzameer60@gmail.com';
         await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
           name: user.displayName || 'New User',
           email: user.email,
-          role: 'patient',
+          role: isAdmin ? 'admin' : 'patient',
           createdAt: new Date().toISOString(),
         });
-        navigate('/patient');
+        navigate(isAdmin ? '/admin' : '/patient');
       } else {
         const role = userDoc.data().role;
         navigate(`/${role}`);

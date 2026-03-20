@@ -10,13 +10,15 @@ import {
   X, 
   Stethoscope,
   User as UserIcon,
-  Clock
+  Clock,
+  Bell
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import Notifications from './Notifications';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -129,12 +131,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <Stethoscope className="text-indigo-600 w-6 h-6" />
           <span className="font-bold text-slate-900">DocBooker</span>
         </div>
-        <button
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
-        >
-          {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <Notifications />
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
+          >
+            {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Menu Overlay */}
@@ -171,6 +176,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main className="flex-1 lg:p-10 p-4 pt-20 lg:pt-10 overflow-x-hidden">
         <div className="max-w-7xl mx-auto">
+          {/* Desktop Top Bar */}
+          <div className="hidden lg:flex items-center justify-end mb-8">
+            <Notifications />
+          </div>
           {children}
         </div>
       </main>

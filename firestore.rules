@@ -93,5 +93,13 @@ service cloud.firestore {
       );
       allow delete: if isAdmin();
     }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow update: if isAuthenticated() && request.auth.uid == resource.data.userId && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow create: if false; // Only server can create notifications
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
   }
 }

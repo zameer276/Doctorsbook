@@ -50,6 +50,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["patientId", "doctorId", "date", "time", "status"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["reminder", "status_change", "system"] },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "appointmentId": { "type": "string" }
+      },
+      "required": ["userId", "title", "message", "type", "read", "createdAt"]
     }
   },
   "firestore": {
@@ -64,6 +79,10 @@
     "/appointments/{appointmentId}": {
       "schema": "Appointment",
       "description": "Appointment records."
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications."
     }
   }
 }
